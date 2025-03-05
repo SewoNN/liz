@@ -1,9 +1,9 @@
 [project]
-name = "react-agent"
+name = "duck-dating"
 version = "0.0.1"
-description = "Starter template for making a custom Reasoning and Action agent (using tool calling) in LangGraph."
+description = "An AI Multi Agent System for Duck Dating"
 authors = [
-    { name = "William Fu-Hinthorn", email = "13333726+hinthornw@users.noreply.github.com" },
+    { name = "Yarin Allali", email = "yarin.allali@gmail.com" },
 ]
 readme = "README.md"
 license = { text = "MIT" }

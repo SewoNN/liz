@@ -7,7 +7,7 @@ from typing import Annotated, Optional
 
 from langchain_core.runnables import RunnableConfig, ensure_config
 
-from react_agent import prompts
+from script_maker import prompts
 
 
 @dataclass(kw_only=True)
@@ -22,8 +22,21 @@ class Configuration:
         },
     )
 
+    required_details: dict[str, str] = field(
+        default_factory=lambda: {
+            "character_1": "First character's name",
+            "character_2": "Second character's name",
+            "setting": "Preferred setting or scenario",
+            "tone": "Desired tone (playful, seductive, romantic)",
+            "preferences": "Additional preferences or boundaries"
+        },
+        metadata={
+            "description": "Required fields and their descriptions for user details collection"
+        },
+    )
+
     model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
-        default="ollama/llama3.2:3b",
+        default="ollama/mistral:7b",
         metadata={
             "description": "The name of the language model to use for the agent's main interactions. "
             "Should be in the form: provider/model-name."
