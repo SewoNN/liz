@@ -1,4 +1,4 @@
-from script_maker.configuration import Configuration
+from react_agent.configuration import Configuration
 
 
 def test_configuration_empty() -> None:

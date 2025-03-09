@@ -1,7 +1,7 @@
 import pytest
 from langsmith import unit
 
-from script_maker import graph
+from react_agent import graph
 
 
 @pytest.mark.asyncio
