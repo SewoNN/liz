@@ -23,10 +23,10 @@ class Configuration:
     )
 
     model: Annotated[str, {"__template_metadata__": {"kind": "llm"}}] = field(
-        default="ollama/llama3.2:3b",
+        default="mistral:7b",
         metadata={
             "description": "The name of the language model to use for the agent's main interactions. "
-            "Should be in the form: provider/model-name."
+            "Should be in the form: model-name."
         },
     )
 
