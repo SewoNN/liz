@@ -12,10 +12,12 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolArg
 from typing_extensions import Annotated
+from langchain_core.tools import tool
 
-from react_agent.configuration import Configuration
+from config.configuration import Configuration
 
 
+@tool
 async def search(
     query: str, *, config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Optional[list[dict[str, Any]]]:
@@ -31,4 +33,7 @@ async def search(
     return cast(list[dict[str, Any]], result)
 
 
+SCRIPT_MAKER_TOOLS: List[Callable[..., Any]] = [search]
+BOX_SUGGESTOR_TOOLS: List[Callable[..., Any]] = [search]
 TOOLS: List[Callable[..., Any]] = [search]
+
