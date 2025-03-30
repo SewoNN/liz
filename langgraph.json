@@ -1,7 +1,7 @@
 {
-  "dependencies": ["."],
+  "dependencies": ["./src"],
   "graphs": {
-    "agent": "./src/general/graph.py:liz"
+    "agent": "./src/workflow/graph.py:liz"
   },
   "env": ".env"
 }
