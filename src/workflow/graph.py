@@ -10,33 +10,40 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import create_react_agent
 from langchain_ollama import ChatOllama
 from langgraph.types import Command
-
+from langchain.tools.retriever import create_retriever_tool
+from langchain_qdrant import QdrantVectorStore
 
 from workflow.prompts import SCRIPT_CREATOR_PROMPT, DATE_SCHEDULER_PROMPT, BOX_CREATOR_PROMPT, SUPERVISOR_PROMPT
 from workflow.states import LizState, State
 
 TOOLS = []
 
+model_version = "deepseek-r1:14b"
+llm = ChatOllama(model=model_version)
+
+
 script_maker = create_react_agent(
-    model=ChatOllama(model="mistral:7b"),
+    model=llm,
     tools=TOOLS,
     prompt=SCRIPT_CREATOR_PROMPT,
     name="script_maker_agent",
 )
 
 box_creator = create_react_agent(
-    model=ChatOllama(model="mistral:7b"),
+    model=llm,
     tools=TOOLS,
     prompt=BOX_CREATOR_PROMPT,
     name="box_creator_agent",
 )
 
 date_scheduler = create_react_agent(
-    model=ChatOllama(model="mistral:7b"),
+    model=llm,
     tools=TOOLS,
     prompt=DATE_SCHEDULER_PROMPT,
     name="date_scheduler_agent",
 )
+
+QdrantVectorStore.as_retriever()
 
 
 # Set up logging configuration
@@ -49,7 +56,6 @@ logging.basicConfig(
     ]
 )
 
-llm = ChatOllama(model="mistral:7b")
 logger = logging.getLogger('liz_workflow')
 
 def supervisor_node(state: State) -> Command[Literal["script_maker_agent", "box_creator_agent", "date_scheduler_agent", "__end__"]]:
