@@ -26,6 +26,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+langgraph_api/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -164,3 +165,7 @@ cython_debug/
 LICENSE
 .env.example
 test.py
+.langgraph_api/.langgraph_checkpoint.1.pckl
+.langgraph_api/.langgraph_checkpoint.2.pckl
+.langgraph_api/.langgraph_ops.pckl
+.langgraph_api/.langgraph_retry_counter.pckl
