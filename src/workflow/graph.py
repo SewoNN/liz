@@ -33,19 +33,43 @@ class SupervisorResponse(BaseModel):
     next: Literal["script_maker_agent", "box_creator_agent", "date_scheduler_agent", "card_creator_agent", "FINISH"] = Field(description="The next agent to call")
 
 
-childhood_questions_retriever = QdrantVectorStore(client=QdrantClient(url="http://localhost:6333"),
-                                collection_name="childhood", embedding=OllamaEmbeddings(model="nomic-embed-text")).as_retriever()
-
-retriever_tool = create_retriever_tool(
-    childhood_questions_retriever,
-    "retrieve_childhood_questions",
-    "Search and return questions on the topic of personal and childhood memories"
-)
-
-card_creator_tools = [retriever_tool]
+# Wrap the retriever tool with error handling
+def retrieve_questions(category_request: Dict[str, Any]) -> str:
+    """Search and return questions on the topic of personal and childhood memories"""
+    try:
+        logger.info(f"Retrieving questions for category request: {category_request}")
+        
+        # Create embedding for the category request
+        embed_model = OllamaEmbeddings(model="nomic-embed-text")
+        query_vector = embed_model.embed_query(str(category_request))
+        
+        # Use direct API call to Qdrant
+        client = QdrantClient(url="http://localhost:6333")
+        card_maker_collection_name = "questions"
+        search_result = client.search(
+            collection_name=card_maker_collection_name,
+            query_vector=query_vector,
+            limit=5
+        )
+        
+        # Extract questions from the results
+        questions = []
+        for result in search_result:
+            if 'question' in result.payload:
+                questions.append(result.payload['question'])
+        
+        logger.info(f"Retrieved {len(questions)} results")
+        
+        if not questions:
+            return "No relevant questions found for your query."
+        
+        return "\n".join(questions)
+    except Exception as e:
+        logger.error(f"Error retrieving questions: {e}")
+        return "Sorry, I encountered an error while retrieving questions. Please try a different query or approach."
 TOOLS = []
 
-model_version = "deepseek-r1:14b"
+model_version = "mistral-nemo:latest"
 llm = ChatOllama(model=model_version)
 
 
@@ -72,9 +96,9 @@ date_scheduler = create_react_agent(
 
 card_creator = create_react_agent(
     model=llm,
-    tools=card_creator_tools,
+    tools=[retrieve_questions],
     prompt=CARD_CREATOR_PROMPT,
-    name="card_game_creator_agent",
+    name="card_creator_agent",
     response_format=CardCreatorStructuredOutput,
 )
 
@@ -115,9 +139,7 @@ def supervisor_node(state: State) -> Command[Literal["script_maker_agent", "box_
     return Command(goto=goto, update={"next": goto})
 
 def script_maker_node(state: State) -> Command[Literal["supervisor"]]:
-    logger.info("Script maker node processing request")
     result = script_maker.invoke(state)
-    logger.info("Script maker completed processing")
     return Command(
         update={
             "messages": [
