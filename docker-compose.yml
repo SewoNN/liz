@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333" # gRPC port
+      - "6334:6334" # REST API port
+    volumes:
+      - qdrant_data:/qdrant/storage:rw # Persist data
+
+volumes:
+  qdrant_data: {} # Define the named volume 

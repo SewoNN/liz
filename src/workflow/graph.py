@@ -8,17 +8,68 @@ import json
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import create_react_agent
-from langchain_ollama import ChatOllama
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langgraph.types import Command
 from langchain.tools.retriever import create_retriever_tool
 from langchain_qdrant import QdrantVectorStore
-
-from workflow.prompts import SCRIPT_CREATOR_PROMPT, DATE_SCHEDULER_PROMPT, BOX_CREATOR_PROMPT, SUPERVISOR_PROMPT
+from qdrant_client import QdrantClient
+from typing import List, Dict, Any
+from workflow.prompts import SCRIPT_CREATOR_PROMPT, DATE_SCHEDULER_PROMPT, BOX_CREATOR_PROMPT, SUPERVISOR_PROMPT, CARD_CREATOR_PROMPT
 from workflow.states import LizState, State
+from pydantic import BaseModel, Field
 
+
+class CardCreatorStructuredOutput(BaseModel):
+    chain_of_thought: str = Field(description="The chain of thought process used to create the card set")
+    card_set_name: str = Field(description="The name of the card set")
+    card_set_description: str = Field(description="A description of the card set")
+    question_count: int = Field(description="The number of questions in the card set")
+    categories: List[Dict[str, Any]] = Field(description="The categories of questions in the card set")
+    questions: List[str] = Field(description="The questions in the card set")
+
+
+class SupervisorResponse(BaseModel):
+    chain_of_thought: str = Field(description="The chain of thought process used to determine the next agent to call")
+    next: Literal["script_maker_agent", "box_creator_agent", "date_scheduler_agent", "card_creator_agent", "FINISH"] = Field(description="The next agent to call")
+
+
+# Wrap the retriever tool with error handling
+def retrieve_questions(category_request: Dict[str, Any]) -> str:
+    """Search and return questions on the topic of personal and childhood memories"""
+    try:
+        logger.info(f"Retrieving questions for category request: {category_request}")
+        
+        # Create embedding for the category request
+        embed_model = OllamaEmbeddings(model="nomic-embed-text")
+        query_vector = embed_model.embed_query(str(category_request))
+        
+        # Use direct API call to Qdrant
+        client = QdrantClient(url="http://localhost:6333")
+        card_maker_collection_name = "questions"
+        search_result = client.search(
+            collection_name=card_maker_collection_name,
+            query_vector=query_vector,
+            limit=5
+        )
+        
+        # Extract questions from the results
+        questions = []
+        for result in search_result:
+            if 'question' in result.payload:
+                questions.append(result.payload['question'])
+        
+        logger.info(f"Retrieved {len(questions)} results")
+        
+        if not questions:
+            return "No relevant questions found for your query."
+        
+        return "\n".join(questions)
+    except Exception as e:
+        logger.error(f"Error retrieving questions: {e}")
+        return "Sorry, I encountered an error while retrieving questions. Please try a different query or approach."
 TOOLS = []
 
-model_version = "deepseek-r1:14b"
+model_version = "mistral-nemo:latest"
 llm = ChatOllama(model=model_version)
 
 
@@ -43,8 +94,13 @@ date_scheduler = create_react_agent(
     name="date_scheduler_agent",
 )
 
-QdrantVectorStore.as_retriever()
-
+card_creator = create_react_agent(
+    model=llm,
+    tools=[retrieve_questions],
+    prompt=CARD_CREATOR_PROMPT,
+    name="card_creator_agent",
+    response_format=CardCreatorStructuredOutput,
+)
 
 # Set up logging configuration
 logging.basicConfig(
@@ -58,25 +114,24 @@ logging.basicConfig(
 
 logger = logging.getLogger('liz_workflow')
 
-def supervisor_node(state: State) -> Command[Literal["script_maker_agent", "box_creator_agent", "date_scheduler_agent", "__end__"]]:
+def supervisor_node(state: State) -> Command[Literal["script_maker_agent", "box_creator_agent", "date_scheduler_agent", "card_creator_agent", "__end__"]]:
     logger.info("Supervisor node processing request")
     messages = [
         {"role": "system", "content": SUPERVISOR_PROMPT},
     ] + state["messages"]
     logger.info(f"Supervisor messages: {messages}")
     
-    response = llm.invoke(messages)
+    response = ChatOllama(model=model_version).with_structured_output(SupervisorResponse).invoke(messages)
     logger.info(f"Supervisor response: {response}")
     logger.info(f"Supervisor response type: {type(response)}")
     
     try:
-        content_str = response.content
-        parsed_content = json.loads(content_str)
-        goto = parsed_content.get("next", "FINISH")
+        goto = response.next
         if goto == "FINISH":
             goto = END
     except (json.JSONDecodeError, AttributeError) as e:
         logger.error(f"Error parsing supervisor response: {e}")
+        logger.error(f"Response: {response}")
         logger.error(f"Response content: {response.content if hasattr(response, 'content') else response}")
         goto = END
     
@@ -84,9 +139,7 @@ def supervisor_node(state: State) -> Command[Literal["script_maker_agent", "box_
     return Command(goto=goto, update={"next": goto})
 
 def script_maker_node(state: State) -> Command[Literal["supervisor"]]:
-    logger.info("Script maker node processing request")
     result = script_maker.invoke(state)
-    logger.info("Script maker completed processing")
     return Command(
         update={
             "messages": [
@@ -118,6 +171,18 @@ def date_scheduler_node(state: State) -> Command[Literal["supervisor"]]:
         goto="supervisor",
     ) 
 
+def card_creator_node(state: State) -> Command[Literal["supervisor"]]:
+    result = card_creator.invoke(state)
+    return Command(
+        update={
+            "messages": [
+                HumanMessage(content=result["messages"][-1].content, name="card_creator_agent")
+            ],
+            "structured_output": result.get("structured_response", {})
+        },
+        goto="supervisor",
+    )
+
 # You can also log when the graph is created
 logger.info("Creating workflow graph")
 graph = StateGraph(LizState)
@@ -126,6 +191,7 @@ graph.add_node("supervisor", supervisor_node)
 graph.add_node("script_maker_agent", script_maker_node)
 graph.add_node("box_creator_agent", box_creator_node)
 graph.add_node("date_scheduler_agent", date_scheduler_node)
+graph.add_node("card_creator_agent", card_creator_node)
 
 graph.add_edge("__start__", "supervisor")
 

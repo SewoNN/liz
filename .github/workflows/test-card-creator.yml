@@ -1,0 +1,66 @@
+name: Card Creator Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/workflow/graph.py'
+      - 'src/workflow/prompts.py'
+      - 'tests/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/workflow/graph.py'
+      - 'src/workflow/prompts.py'
+      - 'tests/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install langfuse  # Install LangFuse explicitly
+    
+    - name: Run unit tests
+      run: |
+        pytest tests/unit_tests/test_card_creator_*.py -v
+    
+    - name: Run integration tests
+      run: |
+        pytest tests/integration_tests/test_card_creator_*.py tests/integration_tests/test_supervisor_card_routing.py -v
+    
+    - name: Run evaluation tests
+      env:
+        LANGFUSE_API_KEY: ${{ secrets.LANGFUSE_API_KEY }}
+        LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+        LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST }}
+        USE_REAL_LANGFUSE: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+      run: |
+        # Skip if LangFuse API key not set
+        if [ -z "$LANGFUSE_API_KEY" ]; then
+          echo "Skipping evaluation tests as LANGFUSE_API_KEY is not set"
+        else
+          pytest tests/evaluation_tests/test_card_creator_*.py -v
+        fi
+    
+    - name: Generate coverage report
+      run: |
+        pytest --cov=src/workflow --cov-report=xml
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v1
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false 
